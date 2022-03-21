@@ -14,15 +14,17 @@ class RMSELoss(_Loss):
 
 
 class DiceLoss(torch.nn.Module):
+    '''
+    Dice loss based on
+    https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
+    '''
     def forward(self, inputs, targets, smooth=1):
-        # flatten label and prediction tensors
-        inputs = inputs.view(-1)
-        targets = targets.view(-1)
+        reduce_dims = (1, 2, 3)
+        intersection = (inputs * targets).sum(reduce_dims)
+        cardinality = (inputs + targets).sum(reduce_dims)
+        dice = 2*(intersection + smooth)/(cardinality + smooth)
 
-        intersection = (inputs * targets).sum()
-        dice = (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)
-
-        return 1 - dice
+        return 1 - dice.mean()
 
 
 def test_rmse_loss():

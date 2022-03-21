@@ -8,6 +8,7 @@ import cv2
 from pytorch_lightning import Trainer
 from pytorch_lightning.core.lightning import LightningModule
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.utilities.seed import seed_everything
 import torch
 import torch.nn.functional as F
@@ -78,17 +79,21 @@ class PriorSegUnet(LightningModule):
 
         if batch_idx < 20:
             os.makedirs(
-                pjoin(self.valid_dir, f'{self.current_epoch}'),
+                pjoin(
+                    self.valid_dir, self.hparams.run_name,
+                    f'{self.current_epoch}'
+                ),
                 exist_ok=True,
             )
             gt_reco = gt_reco.cpu().numpy()[0, 0]
             cv2.imwrite(
-                pjoin(self.valid_dir, f'{self.current_epoch}/{batch_idx}_out_gt.png'),
+                pjoin(self.valid_dir, self.hparams.run_name,
+                      f'{self.current_epoch}/{batch_idx}_out_gt.png'),
                 gt_reco/0.7*255)
 
             prediction = prediction[0].cpu().float().numpy()[0, 0]
             cv2.imwrite(
-                pjoin(self.valid_dir,
+                pjoin(self.valid_dir, self.hparams.run_name,
                       f'{self.current_epoch}/{batch_idx}_out_pred.png'),
                 prediction/0.7*255,
             )
@@ -175,6 +180,7 @@ class PriorSegUnet(LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--run_name', type=str)
         parser.add_argument('--subject_dir', type=str)
         parser.add_argument('--needle_dir', type=str)
         parser.add_argument('--prior_dir', type=str)
@@ -195,7 +201,8 @@ def main():
     hparams.lr = 1e-3
     hparams.max_epochs = 150
     hparams.batch_size = 32
-    hparams.valid_dir = 'valid/SegUnet'
+    hparams.run_name = 'SegUnet'
+    hparams.valid_dir = 'valid'
     hparams.subject_dir = '/mnt/nvme2/lungs/lungs3d_projections'
     hparams.needle_dir = '/home/phernst/Documents/git/ictdl/needle_projections'
     hparams.prior_dir = '/mnt/nvme2/lungs/lungs3d/priors'
@@ -207,13 +214,15 @@ def main():
     model = PriorSegUnet(**vars(hparams))
 
     checkpoint_callback = ModelCheckpoint(
-        dirpath=hparams.valid_dir,
+        dirpath=pjoin(hparams.valid_dir, hparams.run_name),
         monitor='val_loss',
         save_last=True,
     )
     lr_callback = LearningRateMonitor()
+    logger = TensorBoardLogger('lightning_logs', name=hparams.run_name)
 
     trainer = Trainer(
+        logger=logger,
         precision=16 if hparams.use_amp else 32,
         gpus=1,
         callbacks=[checkpoint_callback, lr_callback],
