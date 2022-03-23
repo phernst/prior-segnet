@@ -113,6 +113,8 @@ class PriorSegUnet(LightningModule):
             prior_path,
             shuffle=train,
             augment_needle=train,
+            augment_all=train,
+            misalign=train,
         )
 
     def train_dataloader(self) -> DataLoader:
@@ -201,7 +203,7 @@ def main():
     hparams.lr = 1e-3
     hparams.max_epochs = 150
     hparams.batch_size = 32
-    hparams.run_name = 'SegUnet'
+    hparams.run_name = 'SegUnet_aug_mis'
     hparams.valid_dir = 'valid'
     hparams.subject_dir = '/mnt/nvme2/lungs/lungs3d_projections'
     hparams.needle_dir = '/home/phernst/Documents/git/ictdl/needle_projections'
