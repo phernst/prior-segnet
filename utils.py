@@ -1,7 +1,7 @@
 import csv
 
 import numpy as np
-from piq import ssim, psnr
+from skimage.metrics import structural_similarity, peak_signal_noise_ratio
 import torch
 
 from reconstruct_interventional import CARMH_GT_UPPER_99_PERCENTILE, \
@@ -9,8 +9,19 @@ from reconstruct_interventional import CARMH_GT_UPPER_99_PERCENTILE, \
 
 
 def calculate_metrics(prediction: torch.Tensor, groundtruth: torch.Tensor) -> dict[str, float]:
-    ssim_val = ssim(prediction.clamp(0, 1)[None], groundtruth.clamp(0, 1)[None])
-    psnr_val = psnr(prediction.clamp(0, 1)[None], groundtruth.clamp(0, 1)[None])
+    psnr_val = peak_signal_noise_ratio(
+        groundtruth.clamp(0, 1)[None].cpu().numpy(),
+        prediction.clamp(0, 1)[None].cpu().numpy(),
+        data_range=1.0,
+    )
+
+    ssim_val = structural_similarity(
+        prediction.clamp(0, 1).cpu().numpy(),
+        groundtruth.clamp(0, 1).cpu().numpy(),
+        data_range=1.0,
+        gaussian_weights=True,
+        channel_axis=0,
+    )
 
     # RMSE in HU
     prediction_hu = mu2hu(prediction*hu2mu(CARMH_GT_UPPER_99_PERCENTILE))
