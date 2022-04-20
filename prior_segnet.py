@@ -1,62 +1,35 @@
-# Adapted from https://discuss.pytorch.org/t/unet-implementation/426
-
 from typing import Tuple
 import torch
 from torch import nn
 import torch.nn.functional as F
 
 
-class UNet(nn.Module):
-    def __init__(self, wf=3,
-                 batch_norm=True):
-        """
-        Implementation of
-        U-Net: Convolutional Networks for Biomedical Image Segmentation
-        (Ronneberger et al., 2015)
-        https://arxiv.org/abs/1505.04597
-
-        Using the default arguments will yield the exact version used
-        in the original paper
-
-        Args:
-            in_channels (int): number of input channels
-            n_classes (int): number of output channels
-            depth (int): depth of the network
-            wf (int): number of filters in the first layer is 2**wf
-            padding (bool): if True, apply padding such that the input shape
-                            is the same as the output.
-                            This may introduce artifacts
-            batch_norm (bool): Use BatchNorm after layers with an
-                               activation function
-            up_mode (str): one of 'upconv' or 'upsample'.
-                           'upconv' will use transposed convolutions for
-                           learned upsampling.
-                           'upsample' will use bilinear upsampling.
-        """
+class PriorSegNet(nn.Module):
+    def __init__(self, wf=3, batch_norm=True):
         super().__init__()
 
         sfs = 2**wf
 
         # prior
-        self.conv_prior_1 = UNetDownBlock(1, (sfs, sfs * 2), batch_norm)  # 8, 16
-        self.conv_prior_2 = UNetDownBlock(sfs*2, (sfs * 2, sfs * 4), batch_norm)  # 16, 32
-        self.conv_prior_3 = UNetDownBlock(sfs*4, (sfs * 4, sfs * 8), batch_norm)  # 32, 64
-        self.conv_prior_4 = UNetDownBlock(sfs*8, (sfs * 8, sfs * 16), batch_norm)  # 64, 128
-        self.conv_prior_5 = UNetDownBlock(sfs*16, (sfs * 16, sfs * 32), batch_norm)  # 128, 256
+        self.conv_prior_1 = SegNetDownBlock(1, (sfs, sfs * 2), batch_norm)  # 8, 16
+        self.conv_prior_2 = SegNetDownBlock(sfs*2, (sfs * 2, sfs * 4), batch_norm)  # 16, 32
+        self.conv_prior_3 = SegNetDownBlock(sfs*4, (sfs * 4, sfs * 8), batch_norm)  # 32, 64
+        self.conv_prior_4 = SegNetDownBlock(sfs*8, (sfs * 8, sfs * 16), batch_norm)  # 64, 128
+        self.conv_prior_5 = SegNetDownBlock(sfs*16, (sfs * 16, sfs * 32), batch_norm)  # 128, 256
 
         # cbct
-        self.conv_cbct_1 = UNetDownBlock(1, (sfs, sfs * 2), batch_norm)  # 8, 16
-        self.conv_cbct_2 = UNetDownBlock(sfs*2, (sfs * 2, sfs * 4), batch_norm)  # 16, 32
-        self.conv_cbct_3 = UNetDownBlock(sfs*4, (sfs * 4, sfs * 8), batch_norm)  # 32, 64
-        self.conv_cbct_4 = UNetDownBlock(sfs*8, (sfs * 8, sfs * 16), batch_norm)  # 64, 128
-        self.conv_cbct_5 = UNetDownBlock(sfs*16, (sfs * 16, sfs * 32), batch_norm)  # 128, 256
+        self.conv_cbct_1 = SegNetDownBlock(1, (sfs, sfs * 2), batch_norm)  # 8, 16
+        self.conv_cbct_2 = SegNetDownBlock(sfs*2, (sfs * 2, sfs * 4), batch_norm)  # 16, 32
+        self.conv_cbct_3 = SegNetDownBlock(sfs*4, (sfs * 4, sfs * 8), batch_norm)  # 32, 64
+        self.conv_cbct_4 = SegNetDownBlock(sfs*8, (sfs * 8, sfs * 16), batch_norm)  # 64, 128
+        self.conv_cbct_5 = SegNetDownBlock(sfs*16, (sfs * 16, sfs * 32), batch_norm)  # 128, 256
 
         # deconv
-        self.deconv1 = UNetUpBlock(sfs*64, (sfs*64, sfs*32), batch_norm)
-        self.deconv2 = UNetUpBlock(sfs*64, (sfs*16, sfs*16), batch_norm)
-        self.deconv3 = UNetUpBlock(sfs*32, (sfs*8, sfs*8), batch_norm)
-        self.deconv4 = UNetUpBlock(sfs*16, (sfs*4, sfs*4), batch_norm)
-        self.deconv5 = UNetUpBlock(sfs*8, (sfs*2, sfs*2), batch_norm)
+        self.deconv1 = SegNetUpBlock(sfs*64, (sfs*64, sfs*32), batch_norm)
+        self.deconv2 = SegNetUpBlock(sfs*64, (sfs*16, sfs*16), batch_norm)
+        self.deconv3 = SegNetUpBlock(sfs*32, (sfs*8, sfs*8), batch_norm)
+        self.deconv4 = SegNetUpBlock(sfs*16, (sfs*4, sfs*4), batch_norm)
+        self.deconv5 = SegNetUpBlock(sfs*8, (sfs*2, sfs*2), batch_norm)
 
         # conv level 0
         self.conv_level0 = [
@@ -105,14 +78,14 @@ class UNet(nn.Module):
         deconv4 = self.deconv4(deconv3, prior2, cbct2)
         deconv5 = self.deconv5(deconv4, prior1, cbct1)
 
-        deconv5 = UNetUpBlock.embed_layer(deconv5, x.shape[2:])
+        deconv5 = SegNetUpBlock.embed_layer(deconv5, x.shape[2:])
 
         conv_level0 = self.conv_level0(deconv5)
 
         return self.reco_out(conv_level0), self.seg_out(conv_level0)
 
 
-class UNetDownBlock(nn.Module):
+class SegNetDownBlock(nn.Module):
     def __init__(self, in_size, filter_size: Tuple[int, int], batch_norm):
         super().__init__()
         block = []
@@ -136,7 +109,7 @@ class UNetDownBlock(nn.Module):
         return out
 
 
-class UNetUpBlock(nn.Module):
+class SegNetUpBlock(nn.Module):
     def __init__(self, in_size, filter_size: Tuple[int, int], batch_norm):
         super().__init__()
         block = []
@@ -167,7 +140,7 @@ class UNetUpBlock(nn.Module):
         return layer
 
     def forward(self, *args):
-        args = [UNetUpBlock.embed_layer(l, args[-1].shape[2:]) for l in args]
+        args = [SegNetUpBlock.embed_layer(k, args[-1].shape[2:]) for k in args]
         up = torch.cat(args, 1)
         up = self.block(up)
 
@@ -176,5 +149,5 @@ class UNetUpBlock(nn.Module):
 
 if __name__ == '__main__':
     from torchinfo import summary
-    model = UNet().cuda()
+    model = PriorSegNet().cuda()
     summary(model, (1, 2, 384, 384))

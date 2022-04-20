@@ -16,16 +16,16 @@ from torch.utils.data import DataLoader
 from concatdataset import ConcatDataset
 from singlevolumedataset import SingleVolumeDataset
 
-from prior_segunet import UNet
+from prior_segnet import PriorSegNet as Backbone
 from losses import RMSELoss, DiceLoss
 
 
-class PriorSegUnet(LightningModule):
+class PriorSegNet(LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
         self.save_hyperparameters()
         self.valid_dir = self.hparams.valid_dir
-        self.network = UNet()
+        self.network = Backbone()
 
         self.reco_loss = F.mse_loss
         self.seg_loss = DiceLoss()
@@ -36,18 +36,8 @@ class PriorSegUnet(LightningModule):
             self.parameters(),
             lr=self.hparams.lr,
         )
-        # scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        #     optimizer,
-        #     max_lr=self.hparams.lr,
-        #     epochs=self.hparams.max_epochs,
-        #     steps_per_epoch=len(self.train_dataloader()),
-        # )
         return {
             'optimizer': optimizer,
-            # 'lr_scheduler': {
-            #     'scheduler': scheduler,
-            #     'interval': 'step',
-            # },
             'monitor': 'val_loss',
         }
 
@@ -61,7 +51,7 @@ class PriorSegUnet(LightningModule):
         prediction = self(batch_in)
         reco_loss = self.reco_loss(prediction[0], gt_reco)
         seg_loss = self.seg_loss(prediction[1], gt_seg)
-        loss = reco_loss + 1e-3*seg_loss
+        loss = reco_loss + 1e-5*seg_loss
         return {
             'loss': loss,
             'reco_loss': reco_loss.detach(),
@@ -74,7 +64,7 @@ class PriorSegUnet(LightningModule):
         prediction = self(batch_in)
         reco_loss = self.reco_loss(prediction[0], gt_reco)
         seg_loss = self.seg_loss(prediction[1], gt_seg)
-        loss = reco_loss + 1e-3*seg_loss
+        loss = reco_loss + 1e-5*seg_loss
         accuracy = self.accuracy(prediction[0], gt_reco)
 
         if batch_idx < 20:
@@ -196,14 +186,14 @@ def main():
     seed_everything(42)
 
     parser = ArgumentParser()
-    parser = PriorSegUnet.add_model_specific_args(parser)
+    parser = PriorSegNet.add_model_specific_args(parser)
     parser = Trainer.add_argparse_args(parser)
     hparams = parser.parse_args()
     hparams.use_amp = True
     hparams.lr = 1e-3
     hparams.max_epochs = 150
     hparams.batch_size = 32
-    hparams.run_name = 'SegUnet_aug_mis'
+    hparams.run_name = 'SegNet_aug_mis_r1_s1e-5'
     hparams.valid_dir = 'valid'
     hparams.subject_dir = '/mnt/nvme2/lungs/lungs3d_projections'
     hparams.needle_dir = '/home/phernst/Documents/git/ictdl/needle_projections'
@@ -213,7 +203,7 @@ def main():
         hparams.train_subjects = json_dict['train_subjects']
         hparams.valid_subjects = json_dict['valid_subjects']
 
-    model = PriorSegUnet(**vars(hparams))
+    model = PriorSegNet(**vars(hparams))
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=pjoin(hparams.valid_dir, hparams.run_name),

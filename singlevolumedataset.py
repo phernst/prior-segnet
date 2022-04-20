@@ -1,6 +1,6 @@
 from functools import cache
 import random
-from typing import Tuple
+from typing import Tuple, Union
 
 import numpy as np
 import torch
@@ -50,7 +50,7 @@ class SingleVolumeDataset(torch.utils.data.Dataset):
         return self._reconstruct().shape[0]
 
     def _augmentation(self, input_t: torch.Tensor, groundtruth_t: torch.Tensor,
-                      full_needle_t: torch.Tensor, misalign: bool):
+                      full_needle_t: torch.Tensor):
         # 0-none 1-rotate 2-scale 3-flip 4-fliprotate
         rand_num = random.randint(0, 4)
         scale_ratio = [0.8, 1.2]
@@ -84,13 +84,6 @@ class SingleVolumeDataset(torch.utils.data.Dataset):
                 ),
                 angle=self.AUGMENTATION_MAX_ANGLE,
             )
-
-        if misalign:
-            if random.random() > 0.5:
-                input_t[1:2] = self._rotate(
-                    input_t[1:2],
-                    angle=self.MAX_ANGLE_PRIOR,
-                )[0]
 
         return input_t, groundtruth_t, full_needle_t
 
@@ -134,7 +127,19 @@ class SingleVolumeDataset(torch.utils.data.Dataset):
                 input_t,
                 gt_t,
                 full_needle_t,
-                misalign=self.misalign,
+            )
+
+        if isinstance(self.misalign, bool) and self.misalign:
+            if random.random() > 0.5:
+                input_t[1:2] = self._rotate(
+                    input_t[1:2],
+                    angle=self.MAX_ANGLE_PRIOR,
+                )[0]
+        elif isinstance(self.misalign, float):
+            input_t[1:2] = F.rotate(
+                input_t[1:2],
+                self.misalign,
+                interpolation=InterpolationMode.BILINEAR,
             )
 
         input_t, (gt_t, full_needle_t) = _binarize_needle(

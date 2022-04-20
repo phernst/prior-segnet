@@ -30,8 +30,8 @@ def test_dataset():
     prior_path = '/mnt/nvme2/lungs/lungs3d/priors/R_004.pt'
 
     dataset = ConcatDataset(
-        SingleVolumeDataset(volume_path, needle_path, prior_path, False, True),
-        SingleVolumeDataset(volume_path, needle_path, prior_path, False, True))
+        SingleVolumeDataset(volume_path, needle_path, prior_path, False, True, False, False),
+        SingleVolumeDataset(volume_path, needle_path, prior_path, False, True, False, False))
     print(f'{len(dataset)=}')
 
     _ = dataset[0]

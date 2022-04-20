@@ -18,11 +18,11 @@ class DiceLoss(torch.nn.Module):
     Dice loss based on
     https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
     '''
-    def forward(self, inputs, targets, smooth=1):
+    def forward(self, inputs, targets, smooth=1e-6):
         reduce_dims = (1, 2, 3)
         intersection = (inputs * targets).sum(reduce_dims)
-        cardinality = (inputs + targets).sum(reduce_dims)
-        dice = 2*(intersection + smooth)/(cardinality + smooth)
+        cardinality = (inputs**2).sum(reduce_dims) + (targets**2).sum(reduce_dims)
+        dice = (2*intersection + smooth)/(cardinality + smooth)
 
         return 1 - dice.mean()
 
