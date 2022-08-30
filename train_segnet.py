@@ -25,7 +25,7 @@ class PriorSegNet(LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.valid_dir = self.hparams.valid_dir
-        self.network = Backbone()
+        self.network = Backbone(num_slices=self.hparams.num_slices)
 
         self.reco_loss = F.mse_loss
         self.seg_loss = DiceLoss()
@@ -51,7 +51,7 @@ class PriorSegNet(LightningModule):
         prediction = self(batch_in)
         reco_loss = self.reco_loss(prediction[0], gt_reco)
         seg_loss = self.seg_loss(prediction[1], gt_seg)
-        loss = reco_loss + 1e-5*seg_loss
+        loss = reco_loss + self.hparams.seg_lambda*seg_loss
         return {
             'loss': loss,
             'reco_loss': reco_loss.detach(),
@@ -64,7 +64,7 @@ class PriorSegNet(LightningModule):
         prediction = self(batch_in)
         reco_loss = self.reco_loss(prediction[0], gt_reco)
         seg_loss = self.seg_loss(prediction[1], gt_seg)
-        loss = reco_loss + 1e-5*seg_loss
+        loss = reco_loss + self.hparams.seg_lambda*seg_loss
         accuracy = self.accuracy(prediction[0], gt_reco)
 
         if batch_idx < 20:
@@ -105,6 +105,7 @@ class PriorSegNet(LightningModule):
             augment_needle=train,
             augment_all=train,
             misalign=train,
+            num_slices=self.hparams.num_slices,
         )
 
     def train_dataloader(self) -> DataLoader:
@@ -179,6 +180,8 @@ class PriorSegNet(LightningModule):
         parser.add_argument('--valid_dir', type=str)
         parser.add_argument('--train_subjects', type=list)
         parser.add_argument('--valid_subjects', type=list)
+        parser.add_argument('--num_slices', type=int, default=1)
+        parser.add_argument('--seg_lambda', type=float, default=1e-3)
         return parser
 
 
@@ -193,11 +196,13 @@ def main():
     hparams.lr = 1e-3
     hparams.max_epochs = 150
     hparams.batch_size = 32
-    hparams.run_name = 'SegNet_aug_mis_r1_s1e-5'
     hparams.valid_dir = 'valid'
     hparams.subject_dir = '/mnt/nvme2/lungs/lungs3d_projections'
     hparams.needle_dir = '/home/phernst/Documents/git/ictdl/needle_projections'
     hparams.prior_dir = '/mnt/nvme2/lungs/lungs3d/priors'
+    hparams.num_slices = 3
+    hparams.seg_lambda = 1e-3
+    hparams.run_name = f'SegNet_aug_mis_ns{hparams.num_slices}'
     with open('train_valid_test.json', 'r', encoding='utf-8') as json_file:
         json_dict = json.load(json_file)
         hparams.train_subjects = json_dict['train_subjects']

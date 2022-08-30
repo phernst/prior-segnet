@@ -1,6 +1,6 @@
 from functools import cache
 import random
-from typing import Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -19,7 +19,9 @@ class SingleVolumeDataset(torch.utils.data.Dataset):
                  shuffle: bool,
                  augment_needle: bool,
                  augment_all: bool,
-                 misalign: bool):
+                 misalign: bool,
+                 num_slices: int = 1,
+                 photon_flux: Optional[int] = None):
         self.volume_path = volume_path
         self.needle_projections_path = needle_projections_path
         self.prior_path = prior_path
@@ -28,6 +30,8 @@ class SingleVolumeDataset(torch.utils.data.Dataset):
         self.augment_needle = augment_needle
         self.augment_all = augment_all
         self.misalign = misalign
+        self.num_slices = num_slices
+        self.photon_flux = photon_flux
         self.running_indices = list(range(len(self)))
 
     def _reconstruct(self) -> torch.Tensor:
@@ -43,11 +47,12 @@ class SingleVolumeDataset(torch.utils.data.Dataset):
             (vol_ds['projections'], vol_ds['voxel_size'], volume_shape),
             needle_projections,
             prior_ds,
+            self.photon_flux,
         )
 
     @cache
     def __len__(self):
-        return self._reconstruct().shape[0]
+        return self._reconstruct().shape[0] - self.num_slices + 1
 
     def _augmentation(self, input_t: torch.Tensor, groundtruth_t: torch.Tensor,
                       full_needle_t: torch.Tensor):
@@ -113,14 +118,16 @@ class SingleVolumeDataset(torch.utils.data.Dataset):
             if self.shuffle:
                 np.random.shuffle(self.running_indices)
 
-        full_data = self.reco_tensor[self.running_indices[idx]]
+        full_data = self.reco_tensor[
+            self.running_indices[idx]:self.running_indices[idx]+self.num_slices
+        ]
         if idx == len(self) - 1:
             full_data = torch.clone(full_data)
             self.reco_tensor = None
 
-        input_t = torch.stack((full_data[..., 0], full_data[..., 3]))  # [2, w, h]
-        gt_t = full_data[None, ..., 1]
-        full_needle_t = full_data[None, ..., 2]
+        input_t = torch.stack((full_data[..., 0], full_data[..., 3]))  # [2, n, w, h]
+        gt_t = full_data[None, self.num_slices//2, ..., 1]
+        full_needle_t = full_data[None, self.num_slices//2, ..., 2]
 
         if self.augment_all:
             input_t, gt_t, full_needle_t = self._augmentation(
@@ -168,22 +175,23 @@ def test_dataset():
         needle_path,
         prior_path,
         False,
-        True,
-        True,
-        True,
+        False,
+        False,
+        False,
+        num_slices=5,
     )
     print(f'{len(dataset)=}')
 
     _ = dataset[0]
     input_t, gt_t, full_needle_t = dataset[20]
     from matplotlib import pyplot as plt
-    plt.imshow(input_t[0].cpu().numpy())
+    plt.imshow(input_t[0][2].cpu().numpy(), vmin=0.0, vmax=.4)
     plt.figure()
-    plt.imshow(input_t[1].cpu().numpy())
+    plt.imshow(input_t[1][2].cpu().numpy(), vmin=0.0, vmax=.4)
     plt.figure()
-    plt.imshow(full_needle_t[0].cpu().numpy())
+    plt.imshow(full_needle_t[0].cpu().numpy(), vmin=0.0, vmax=.4)
     plt.figure()
-    plt.imshow(gt_t[0].cpu().numpy())
+    plt.imshow(gt_t[0].cpu().numpy(), vmin=0.0, vmax=.4)
     plt.show()
 
 

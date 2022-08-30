@@ -8,8 +8,8 @@ from utils import read_csv
 
 def main():
     method_names = {
-        'FDK', 'FDKConvNet_aug', 'NoSegNet', 'NoSegUnet_aug_mis',
-        'SegUnet', 'SegUnet_aug_mis'
+        'FDK', 'FDKConvNet_aug', 'NoSegUnet_aug_mis', 'SegUnet_aug_mis',
+        # 'NoSegNet', 'SegUnet',
     }
 
     compare_against = 'SegUnet_aug_mis'
@@ -39,7 +39,6 @@ def main():
             ).pvalue
         for method in method_names if method != compare_against
     }
-    print(f'{method_pvalues=}')
 
     significance_level = 0.005
     pairwise_significant = all(

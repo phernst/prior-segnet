@@ -1,6 +1,7 @@
 import json
 import os
 from os.path import join as pjoin
+from typing import Optional
 
 import nibabel as nib
 import numpy as np
@@ -16,7 +17,8 @@ from train_fdkconv import FDKConvNet
 from utils import calculate_metrics
 
 
-def main(run_name: str, save_visuals: bool = False):
+def main(run_name: str, save_visuals: bool = False,
+         photon_flux: Optional[int] = None):
     with open('train_valid_test.json', 'r', encoding='utf-8') as json_file:
         test_subjects = json.load(json_file)['test_subjects']
 
@@ -43,6 +45,7 @@ def main(run_name: str, save_visuals: bool = False):
             augment_needle=False,
             augment_all=False,
             misalign=False,
+            photon_flux=10**photon_flux if photon_flux is not None else None,
         )
         for f in test_subjects
         for n in os.listdir(model.hparams.needle_dir)
@@ -57,7 +60,7 @@ def main(run_name: str, save_visuals: bool = False):
 
     metrics = []
     with torch.inference_mode():
-        for batch_idx, batch in tqdm(enumerate(dataloader_test)):
+        for batch_idx, batch in enumerate(tqdm(dataloader_test)):
             batch_in, batch_gt_reco, _ = batch
             batch_prediction = model(batch_in)
 
@@ -75,14 +78,24 @@ def main(run_name: str, save_visuals: bool = False):
                 nib.save(img, pjoin(visual_dir, "prediction.nii.gz"))
 
     df = pd.DataFrame.from_dict(metrics)
-    df.to_csv(pjoin(out_dir, "Results.csv"))
+    df.to_csv(pjoin(out_dir, f"Results{f'_noise{photon_flux}' if photon_flux is not None else ''}.csv"))
 
 
 def create_visuals(run_name: str):
     main(run_name, save_visuals=True)
 
 
+def run_photon_flux_sweep(run_name: str):
+    out_dir = pjoin('test', run_name)
+    photon_flux_steps = np.linspace(2, 6, num=5)
+    for photon_flux in tqdm(photon_flux_steps):
+        if os.path.exists(pjoin(out_dir, f"Results_noise{photon_flux}.csv")):
+            continue
+        main(run_name, photon_flux=photon_flux)
+
+
 if __name__ == '__main__':
     seed_everything(42)
-    # main('FDKConvNet_aug')
-    create_visuals('FDKConvNet_aug')
+    main('FDKConvNet_aug')
+    # create_visuals('FDKConvNet_aug')
+    # run_photon_flux_sweep("FDKConvNet_aug")

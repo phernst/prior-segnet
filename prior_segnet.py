@@ -5,20 +5,20 @@ import torch.nn.functional as F
 
 
 class PriorSegNet(nn.Module):
-    def __init__(self, wf=3, batch_norm=True):
+    def __init__(self, num_slices: int = 1, wf=3, batch_norm=True):
         super().__init__()
 
         sfs = 2**wf
 
         # prior
-        self.conv_prior_1 = SegNetDownBlock(1, (sfs, sfs * 2), batch_norm)  # 8, 16
+        self.conv_prior_1 = SegNetDownBlock(num_slices, (sfs, sfs * 2), batch_norm)  # 8, 16
         self.conv_prior_2 = SegNetDownBlock(sfs*2, (sfs * 2, sfs * 4), batch_norm)  # 16, 32
         self.conv_prior_3 = SegNetDownBlock(sfs*4, (sfs * 4, sfs * 8), batch_norm)  # 32, 64
         self.conv_prior_4 = SegNetDownBlock(sfs*8, (sfs * 8, sfs * 16), batch_norm)  # 64, 128
         self.conv_prior_5 = SegNetDownBlock(sfs*16, (sfs * 16, sfs * 32), batch_norm)  # 128, 256
 
         # cbct
-        self.conv_cbct_1 = SegNetDownBlock(1, (sfs, sfs * 2), batch_norm)  # 8, 16
+        self.conv_cbct_1 = SegNetDownBlock(num_slices, (sfs, sfs * 2), batch_norm)  # 8, 16
         self.conv_cbct_2 = SegNetDownBlock(sfs*2, (sfs * 2, sfs * 4), batch_norm)  # 16, 32
         self.conv_cbct_3 = SegNetDownBlock(sfs*4, (sfs * 4, sfs * 8), batch_norm)  # 32, 64
         self.conv_cbct_4 = SegNetDownBlock(sfs*8, (sfs * 8, sfs * 16), batch_norm)  # 64, 128
@@ -57,8 +57,8 @@ class PriorSegNet(nn.Module):
         )
 
     def forward(self, x):
-        prior = x[:, 0:1]
-        cbct = x[:, 1:2]
+        prior = x[:, 0]
+        cbct = x[:, 1]
 
         prior1 = self.conv_prior_1(prior)
         prior2 = self.conv_prior_2(prior1)
@@ -78,7 +78,7 @@ class PriorSegNet(nn.Module):
         deconv4 = self.deconv4(deconv3, prior2, cbct2)
         deconv5 = self.deconv5(deconv4, prior1, cbct1)
 
-        deconv5 = SegNetUpBlock.embed_layer(deconv5, x.shape[2:])
+        deconv5 = SegNetUpBlock.embed_layer(deconv5, x.shape[3:])
 
         conv_level0 = self.conv_level0(deconv5)
 

@@ -1,5 +1,5 @@
 from os.path import join as pjoin
-from typing import Tuple
+from typing import Optional, Tuple
 
 import nibabel as nib
 import numpy as np
@@ -14,8 +14,15 @@ from ict_system import ArtisQSystem, DetectorBinning
 CARMH_GT_UPPER_99_PERCENTILE: float = 1720.43359375
 
 
+def apply_noise(projections: torch.Tensor, photon_flux: int):
+    i0 = photon_flux
+    intensity = i0*(-projections).exp()
+    noisy_intensity = torch.max(torch.poisson(intensity), torch.ones_like(intensity))
+    return -(noisy_intensity/i0).log()
+
+
 def create_network_data(vol_ds: Tuple[np.ndarray, Tuple, Tuple], needle_projections: np.ndarray,
-                        prior_ds: torch.Tensor):
+                        prior_ds: torch.Tensor, photon_flux: Optional[int] = None):
     '''
     vol_ds: ([w, h, 360], [3], [3]) tensor, voxel_spacing, volume_shape
     ndl_ds: [u, v, 360]
@@ -25,7 +32,7 @@ def create_network_data(vol_ds: Tuple[np.ndarray, Tuple, Tuple], needle_projecti
         vol_ds[0], vol_ds[1], vol_ds[2], needle_projections
     )
 
-    reco_volume = _reconstruct_3d(*combined)  # [d, h, w, 2]
+    reco_volume = _reconstruct_3d(*combined, photon_flux)  # [d, h, w, 2]
 
     prior_ds = prior_ds.to(reco_volume.device)
     reco_volume, prior_ds = _equalize_z_dimensions(reco_volume, prior_ds)
@@ -50,7 +57,8 @@ def _modify_shape_to_z_fov(vol_projections: np.ndarray,
     return vol_projections, voxel_spacing, volume_shape, needle_projections
 
 
-def _reconstruct_3d(vol_projections, voxel_size, volume_shape, ndl_projections):
+def _reconstruct_3d(vol_projections, voxel_size, volume_shape, ndl_projections,
+                    photon_flux):
     full_radon = _create_radon(360)
     sparse_radon = _create_radon(13)
 
@@ -59,6 +67,8 @@ def _reconstruct_3d(vol_projections, voxel_size, volume_shape, ndl_projections):
 
     # create interventional projections
     vol_ndl_projections = vol_projections + ndl_projections
+    if photon_flux is not None:
+        vol_ndl_projections = apply_noise(vol_ndl_projections, photon_flux)
 
     # create reconstruction of interventional volume w/ all projections
     full_needle = _reconstruct_volume_from_projections(
